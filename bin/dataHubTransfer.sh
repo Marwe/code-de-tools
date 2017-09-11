@@ -25,48 +25,52 @@
 #   includes/singleton.sh
 #   includes/error-handler.sh
 SCRIPT_DIR=$(dirname $0)
-. $SCRIPT_DIR/includes/log-handler.sh
- 
+. "$SCRIPT_DIR/includes/log-handler.sh"
+
+
+verbose=${verbose-}
+if [ -n "$verbose" ] ; then wgetvopt=" -q "; fi
+
 WD=${1-}
-if [ "$WD" == "" ]; then
+if [ -z "$WD" ]; then
   logerr "no working directory specified"
   exit 1
-elif [ ! -d $WD ]; then
+elif [ ! -d "$WD" ]; then
   logerr "no working directory $WD"
   exit 1
-elif [ ! -r $WD/dataHubTransfer.properties ]; then
+elif [ ! -r "$WD/dataHubTransfer.properties" ]; then
   logerr "missing $WD/dataHubTransfer.properties"
   exit 1
 fi
 log "Using working directory $WD"
  
 # load the properties
-. $WD/dataHubTransfer.properties
+. "$WD/dataHubTransfer.properties"
  
 # singleton pattern
-. $SCRIPT_DIR/includes/singleton.sh
+. "$SCRIPT_DIR/includes/singleton.sh"
  
 # error handler: print location of last error and process it further
-. $SCRIPT_DIR/includes/error-handler.sh
+. "$SCRIPT_DIR/includes/error-handler.sh"
  
 # ------------------------------------------------------------------
 # check storage space
-if [ "$MAXCACHESIZE" != "" ]; then
-  cachesize=$(du -sk $outputPath |cut -f1)
-  if (( $cachesize > $MAXCACHESIZE )); then
+if [ -n "$MAXCACHESIZE" ]; then
+  cachesize=$(du -sk "$outputPath" |cut -f1)
+  if [ "$cachesize" -gt "$MAXCACHESIZE" ]; then
     log WARNING "cache full ($cachesize > max $MAXCACHESIZE kbyte), processing stopped"
     exit
   fi
 fi
  
 # keeps the latest ingestionDate of previous retrieval
-lastDateHolder=$WD/lastFileDate
+lastDateHolder="$WD/lastFileDate"
 function keepLastFileDate {
   # remember date of this file for next query
-  dateISO=$1
-  dateNum=$(echo $dateISO | tr -d -- '-: .TZ' |cut -c1-12)
-  echo -n $dateISO > $lastDateHolder
-  touch -t $dateNum $lastDateHolder
+  dateISO="$1"
+  dateNum=$(echo "$dateISO" | tr -d -- '-: .TZ' |cut -c1-12)
+  echo -n "$dateISO" > "$lastDateHolder"
+  touch -t "$dateNum" "$lastDateHolder"
 }
  
 # ------------------------------------------------------------------
@@ -74,22 +78,22 @@ log "starting with $dhusUrl"
  
 # ------------------------------------------------------------------
 # retransmit handling
-TRANSFERHISTORY=$WD/transferHistory.txt
+TRANSFERHISTORY="$WD/transferHistory.txt"
  
 # ------------------------------------------------------------------
 # error handling
-DEFECTSHISTORY=$WD/defectsHistory.txt
+DEFECTSHISTORY="$WD/defectsHistory.txt"
 function logDefect
 {
   logerr "$2"
-  echo "$(date '+%Y-%m-%dT%h:%m:%s') ingestion failed $1" >> $DEFECTSHISTORY
+  echo "$(date '+%Y-%m-%dT%h:%m:%s') ingestion failed $1" >> "$DEFECTSHISTORY"
 }
  
 # ------------------------------------------------------------------
 # prepare query filter
 if [ -r $lastDateHolder ]; then
   log "Using $lastDateHolder"
-  lastIngestionDate="$(cat $lastDateHolder)"
+  lastIngestionDate=$(<"$lastDateHolder")
 fi
 # use now with a 30-second offset to ensure DHuS internal DB is up-to-date
 condition="$basefilter AND ingestionDate:[$lastIngestionDate TO NOW-30SECONDS]"
@@ -99,20 +103,20 @@ log "Searching for new files with $condition"
 # ------------------------------------------------------------------
 # query for new data
 export WGETRC
-response=$(/usr/bin/wget --auth-no-challenge --no-check-certificate -q -O - "$dhusUrl/search?q=$condition&rows=$batchSize&orderby=ingestiondate asc" 2>&1 | cat) 
+response=$(/usr/bin/wget -e "$WGETRC" "$wgetvopts" --auth-no-challenge --no-check-certificate -O - "$dhusUrl/search?q=$condition&rows=$batchSize&orderby=ingestiondate asc" 2>&1 | cat)
 if [ "$?" -ne 0 ] || [ "${response:0:1}" != "<" ] ; then
   logerr "query failed: $response"
   exit 1
 fi
-files=$(echo $response \
+files=$(echo "$response" \
   | xmllint --format --nowrap - \
   | egrep '"(identifier|ingestiondate|size|uuid)"' \
   | cut -d'>' -f2 | cut -d'<' -f1 \
   | xargs -n5 echo | tr ' ' ';'
 )
  
-count=$(echo $files | wc -w | tr -d ' ')
-if [ $count == 0 ]; then
+count=$(echo "$files" | wc -w | tr -d ' ')
+if [ "$count" == "0" ]; then
   log "Found nothing."
   exit 0;
 fi
@@ -126,29 +130,29 @@ do
   # next index
   index=$((index+1))
  
-  uuid=$(echo $f | cut -d';' -f5)
-  safe=$(echo $f | cut -d';' -f1)
-  ingestionDate=$(echo $f | cut -d';' -f2)
-  size=$(echo $f | cut -d';' -f3-4 | tr ';' ' ')
+  uuid=$(echo "$f" | cut -d';' -f5)
+  safe=$(echo "$f" | cut -d';' -f1)
+  ingestionDate=$(echo "$f" | cut -d';' -f2)
+  size=$(echo "$f" | cut -d';' -f3-4 | tr ';' ' ')
   file="$outputPath/${safe}.SAFE.zip"
  
   # check if already retrieved
   if [[ -r "$file" && ( $size == $(stat -L --format='%s' "${file}") ) ]]; then
     log "[$index/$count] Skipping $f"
-    keepLastFileDate $ingestionDate
+    keepLastFileDate "$ingestionDate"
     continue
-  elif [ -r $TRANSFERHISTORY ] && [ $(grep -c $safe $TRANSFERHISTORY) -gt 0 ]; then
+  elif [ -r "$TRANSFERHISTORY" ] && [ $(grep -c "$safe" "$TRANSFERHISTORY") -gt 0 ]; then
     log "[$index/$count] already transferred $safe"
-    keepLastFileDate $ingestionDate
+    keepLastFileDate "$ingestionDate"
     continue
-  elif [ -r $DEFECTSHISTORY ] && [ $(grep -c $safe $DEFECTSHISTORY) -gt 2 ]; then
+  elif [ -r "$DEFECTSHISTORY" ] && [ $(grep -c "$safe" "$DEFECTSHISTORY") -gt 2 ]; then
     log WARNING "[$index/$count] Skipping previously defect $f"
-    keepLastFileDate $ingestionDate
+    keepLastFileDate "$ingestionDate"
     continue
   else
     # retreive file
     log "[$index/$count] Reading $uuid $safe $ingestionDate $size"
-    wget -q --auth-no-challenge --no-check-certificate -O "${file}_tmp" "$dhusUrl/odata/v1/Products('${uuid}')/\$value"
+    wget "$wgetvopt" --auth-no-challenge --no-check-certificate -O "${file}_tmp" "$dhusUrl/odata/v1/Products('${uuid}')/\$value"
   fi
  
   # check ZIP integrity
@@ -164,14 +168,14 @@ do
   mv "${file}_tmp" "${file}"
  
   # remember date of this file for next query
-  keepLastFileDate $ingestionDate
+  keepLastFileDate "$ingestionDate"
  
-  echo "$file" >> $TRANSFERHISTORY
+  echo "$file" >> "$TRANSFERHISTORY"
  
   # --------------------------------------------------------------
   # execute transfer actions
-  if [ "$transferAction" != "" ] && [ -x $transferAction ]; then
-    $transferAction "$file"
+  if [ "$transferAction" != "" ] && [ -x "$transferAction" ]; then
+    "$transferAction" "$file"
   fi
  
 done
