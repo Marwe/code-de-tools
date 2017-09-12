@@ -1,0 +1,14 @@
+dhusUrl="https://code-de.org/dhus"
+#dhusUrl="https://scihub.copernicus.eu/dhus"
+WGETRC="$HOME/.wgetrc.code-de"
+# (file with http_user=xxx and http_password=yyy, optional quiet=on), see wgetrc.template
+xmin=9
+ymin=49.5
+xmax=10
+ymax=50.5
+basefilter="platformname:Sentinel-2 AND footprint:\"Intersects(POLYGON(($xmin $ymin,$xmax $ymin,$xmax $ymax,$xmin $ymax,$xmin $ymin)))\""
+outputPath="$HOME/sentinel-data/"
+lastIngestionDate=NOW-100DAY
+batchSize=100
+#MAXCACHESIZE=$((9 * 1000000)) ## in kbytes
+#transferAction=/path/to/some/command/to/run/after/file/transfer
