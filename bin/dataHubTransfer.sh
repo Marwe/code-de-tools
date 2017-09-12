@@ -13,7 +13,7 @@
 #   dataHubTransfer.properties
 # containing the properties:
 #   dhusUrl="https://code-de.org/dhus"
-#   WGETRC=/path/to/.wgetrc (file with user=xxx and password=yyy of the account at the DHuS service)
+#   WGETRC=/path/to/.wgetrc (file with user=xxx and password=yyy of the account at the DHuS service, optional: quiet=on)
 #   basefilter="platformname:Sentinel-2 AND footprint:\"Intersects(POLYGON((5.9 47.2,15.2 47.2,15.2 55.1,5.9 55.1,5.9 47.2)))\""
 #   outputPath=/tmp
 #   lastIngestionDate=NOW-1DAY
@@ -26,10 +26,6 @@
 #   includes/error-handler.sh
 SCRIPT_DIR=$(dirname $0)
 . "$SCRIPT_DIR/includes/log-handler.sh"
-
-
-verbose=${verbose-}
-if [ -n "$verbose" ] ; then wgetvopt=" -q "; fi
 
 WD=${1-}
 if [ -z "$WD" ]; then
@@ -103,7 +99,7 @@ log "Searching for new files with $condition"
 # ------------------------------------------------------------------
 # query for new data
 export WGETRC
-response=$(/usr/bin/wget -e "$WGETRC" "$wgetvopts" --auth-no-challenge --no-check-certificate -O - "$dhusUrl/search?q=$condition&rows=$batchSize&orderby=ingestiondate asc" 2>&1 | cat)
+response=$(/usr/bin/wget --auth-no-challenge --no-check-certificate -O - "$dhusUrl/search?q=$condition&rows=$batchSize&orderby=ingestiondate asc" 2>&1 | cat)
 if [ "$?" -ne 0 ] || [ "${response:0:1}" != "<" ] ; then
   logerr "query failed: $response"
   exit 1
@@ -152,7 +148,7 @@ do
   else
     # retreive file
     log "[$index/$count] Reading $uuid $safe $ingestionDate $size"
-    wget "$wgetvopt" --auth-no-challenge --no-check-certificate -O "${file}_tmp" "$dhusUrl/odata/v1/Products('${uuid}')/\$value"
+    wget --auth-no-challenge --no-check-certificate -O "${file}_tmp" "$dhusUrl/odata/v1/Products('${uuid}')/\$value"
   fi
  
   # check ZIP integrity
