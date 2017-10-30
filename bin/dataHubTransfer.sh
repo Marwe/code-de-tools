@@ -41,8 +41,10 @@ fi
 log "Using working directory $WD"
  
 # load the properties
-. "$WD/dataHubTransfer.properties"
- 
+propfile="$WD/dataHubTransfer.properties"
+. "$propfile"
+
+
 # singleton pattern
 . "$SCRIPT_DIR/includes/singleton.sh"
  
